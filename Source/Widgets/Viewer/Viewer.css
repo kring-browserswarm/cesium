@@ -7,6 +7,7 @@
 @import url(../SceneModePicker/SceneModePicker.css);
 @import url(../Timeline/Timeline.css);
 @import url(../../DynamicScene/GeoJsonDataSource.css);
+@import url(../GeocodingWidget/GeocodingWidget.css);
 
 .cesium-viewer {
     font-family: sans-serif;
@@ -64,7 +65,7 @@
 .cesium-viewer-toolbar {
 	display: block;
 	position: absolute;
-	top: 5px;
+	top: 44px;
 	right: 5px;
 }
 
@@ -90,4 +91,13 @@
 	height: 32px;
 	vertical-align: middle;
 	margin: 1px;
+}
+
+.cesium-viewer-geocodingWidgetContainer {
+    display: block;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    margin: 1px;
+    height: 32px;
 }

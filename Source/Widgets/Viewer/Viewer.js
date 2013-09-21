@@ -19,6 +19,7 @@ define([
         '../CesiumWidget/CesiumWidget',
         '../ClockViewModel',
         '../FullscreenButton/FullscreenButton',
+        '../GeocodingWidget/GeocodingWidget',
         '../getElement',
         '../HomeButton/HomeButton',
         '../SceneModePicker/SceneModePicker',
@@ -44,6 +45,7 @@ define([
         CesiumWidget,
         ClockViewModel,
         FullscreenButton,
+        GeocodingWidget,
         getElement,
         HomeButton,
         SceneModePicker,
@@ -286,6 +288,19 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
             timeline.container.style.right = 0;
         }
 
+        //Geocoding
+        var geocodingWidget;
+        if (!defined(options.geocodingWidget) || options.geocodingWidget !== false) {
+            var geocodingWidgetContainer = document.createElement('div');
+            geocodingWidgetContainer.className = 'cesium-viewer-geocodingWidgetContainer';
+            viewerContainer.appendChild(geocodingWidgetContainer);
+            geocodingWidget = new GeocodingWidget({
+                container : geocodingWidgetContainer,
+                scene : cesiumWidget.scene,
+                ellipsoid : cesiumWidget.centralBody.getEllipsoid()
+            });
+        }
+
         var eventHelper = new EventHelper();
 
         function updateDataSourceDisplay(clock) {
@@ -322,6 +337,7 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
         this._animation = animation;
         this._timeline = timeline;
         this._fullscreenButton = fullscreenButton;
+        this._geocodingWidget = geocodingWidget;
         this._eventHelper = eventHelper;
         this._lastWidth = 0;
         this._lastHeight = 0;
