@@ -735,11 +735,44 @@ define([
             return;
         }
 
-        var vertexPositions = dynamicObject.vertexPositions;
-        if (!defined(vertexPositions)) {
-            dynamicObject.vertexPositions = vertexPositions = new DynamicVertexPositionsProperty();
+        var cartesian;
+        var cartographic;
+        var i, len, values = [], tmp;
+        tmp = vertexPositionsData.cartesian;
+        if (defined(tmp)) {
+            for (i = 0, len = tmp.length; i < len; i += 3) {
+                values.push(new Cartesian3(tmp[i], tmp[i + 1], tmp[i + 2]));
+            }
+            cartesian = values;
+        } else {
+            tmp = vertexPositionsData.cartographicRadians;
+            if (defined(tmp)) {
+                for (i = 0, len = tmp.length; i < len; i += 3) {
+                    values.push(new Cartographic(tmp[i], tmp[i + 1], tmp[i + 2]));
+                }
+                cartographic = values;
+            } else if (defined(vertexPositionsData.cartographicDegrees)) {
+                tmp = vertexPositionsData.cartographicDegrees;
+                if (defined(tmp)) {
+                    for (i = 0, len = tmp.length; i < len; i += 3) {
+                        values.push(Cartographic.fromDegrees(tmp[i], tmp[i + 1], tmp[i + 2]));
+                    }
+                    cartographic = values;
+                }
+            }
         }
-        vertexPositions.processCzmlIntervals(vertexPositionsData, undefined, dynamicObjectCollection);
+        if (defined(cartographic) || defined(cartesian)) {
+            if (!defined(cartesian)) {
+                cartesian = Ellipsoid.WGS84.cartographicArrayToCartesianArray(cartographic);
+                dynamicObject.vertexPositions = new ConstantProperty(cartesian);
+            }
+        } else {
+            var vertexPositions = dynamicObject.vertexPositions;
+            if (!defined(vertexPositions)) {
+                dynamicObject.vertexPositions = vertexPositions = new DynamicVertexPositionsProperty();
+            }
+            vertexPositions.processCzmlIntervals(vertexPositionsData, undefined, dynamicObjectCollection);
+        }
     }
 
     function processAvailability(dynamicObject, packet, dynamicObjectCollection, sourceUri) {

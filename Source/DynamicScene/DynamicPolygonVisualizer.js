@@ -145,7 +145,7 @@ define([
                 var context = this._scene.getContext();
                 var vertexPositions;
 
-                if (vertexPositionsProperty instanceof ConstantProperty) {
+                if (vertexPositionsProperty instanceof ConstantProperty && (!defined(show) || (show instanceof ConstantProperty))) {
                     if (hasVertexPostions) {
                         vertexPositions = vertexPositionsProperty.getValue(time);
                     } else {
@@ -162,10 +162,9 @@ define([
                         vertexPositions = vertexPositionsProperty.getValue(time);
                     }
 
-                    var material = MaterialProperty.getValue(time, context, dynamicPolygon._material, material);
                     var color;
-                    if(defined(material.color)){
-                        color = material.color.getValue(time);
+                    if(defined(dynamicPolygon._material) && defined(dynamicPolygon._material.color)){
+                        color = dynamicPolygon._material.color.getValue(time);
                     }
 
                     // create a polygon with a material

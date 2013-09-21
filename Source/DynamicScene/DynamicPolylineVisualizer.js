@@ -144,7 +144,7 @@ define(['../Core/defaultValue',
                 var vertexPositions;
                 var uniforms;
 
-                if (vertexPositionsProperty instanceof ConstantProperty) {
+                if (vertexPositionsProperty instanceof ConstantProperty && (!defined(show) || (show instanceof ConstantProperty))) {
                     if (defined(this._processedObject[dynamicObject.id])) {
                         continue;
                     }
