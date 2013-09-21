@@ -1,18 +1,29 @@
 /*global define*/
-define([
+define(['../Core/defaultValue',
         '../Core/DeveloperError',
         '../Core/defined',
         '../Core/destroyObject',
         '../Core/Cartesian3',
         '../Core/Color',
+        '../Core/GeometryInstance',
+        '../Core/PolylineGeometry',
+        '../DynamicScene/ConstantProperty',
+        '../Scene/Primitive',
+        '../Scene/PolylineMaterialAppearance',
         '../Scene/Material',
         '../Scene/PolylineCollection'
        ], function(
+         defaultValue,
          DeveloperError,
          defined,
          destroyObject,
          Cartesian3,
          Color,
+         GeometryInstance,
+         PolylineGeometry,
+         ConstantProperty,
+         Primitive,
+         PolylineMaterialAppearance,
          Material,
          PolylineCollection) {
     "use strict";
@@ -53,6 +64,7 @@ define([
         var polylineCollection = this._polylineCollection = new PolylineCollection();
         scene.getPrimitives().add(polylineCollection);
         this._dynamicObjectCollection = undefined;
+        this._processedObject = {};
         this.setDynamicObjectCollection(dynamicObjectCollection);
     };
 
@@ -123,7 +135,13 @@ define([
         if (defined(this._dynamicObjectCollection)) {
             var dynamicObjects = this._dynamicObjectCollection.getObjects();
             for (i = dynamicObjects.length - 1; i > -1; i--) {
-                dynamicObjects[i]._polylineVisualizerIndex = undefined;
+                var dynamicObject = dynamicObjects[i];
+                dynamicObject._polylineVisualizerIndex = undefined;
+                var primitive = this._processedObject[dynamicObject.id];
+                if (defined(primitive)) {
+                    this._primitives.remove(primitive);
+                    this._processedObject[dynamicObject.id] = undefined;
+                }
             }
         }
 
@@ -185,6 +203,68 @@ define([
         var vertexPositionsProperty = dynamicObject._vertexPositions;
         var polylineVisualizerIndex = dynamicObject._polylineVisualizerIndex;
         var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
+        var property;
+        var width;
+        var material;
+        var vertexPositions;
+        var uniforms;
+
+        if (vertexPositionsProperty instanceof ConstantProperty) {
+            var primitive = dynamicPolylineVisualizer._processedObject[dynamicObject.id];
+            if (defined(primitive)) {
+                primitive.show = show.getValue(time);
+                return;
+            }
+
+            if (defined(ellipseProperty)) {
+                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+            } else {
+                vertexPositions = vertexPositionsProperty.getValue(time);
+            }
+
+            property = dynamicPolyline._width;
+            if (defined(property)) {
+                width = property.getValue(time);
+            }
+
+            material = Material.fromType(dynamicPolylineVisualizer._scene.getContext(), Material.PolylineOutlineType);
+            uniforms = material.uniforms;
+            Color.clone(Color.WHITE, uniforms.color);
+            Color.clone(Color.BLACK, uniforms.outlineColor);
+            uniforms.outlineWidth = 0;
+
+            property = dynamicPolyline._color;
+            if (defined(property)) {
+                uniforms.color = property.getValue(time, uniforms.color);
+            }
+
+            property = dynamicPolyline._outlineColor;
+            if (defined(property)) {
+                uniforms.outlineColor = property.getValue(time, uniforms.outlineColor);
+            }
+
+            property = dynamicPolyline._outlineWidth;
+            if (defined(property)) {
+                uniforms.outlineWidth = property.getValue(time);
+            }
+
+            // create a polyline with a material
+            primitive = new Primitive({
+                geometryInstances : new GeometryInstance({
+                    geometry : new PolylineGeometry({
+                        positions : vertexPositions,
+                        width : defaultValue(width, 10),
+                        vertexFormat : PolylineMaterialAppearance.VERTEX_FORMAT
+                    })
+                }),
+                appearance : new PolylineMaterialAppearance({
+                    material : material
+                })
+            });
+            dynamicPolylineVisualizer._processedObject[dynamicObject.id] = primitive;
+            dynamicPolylineVisualizer._primitives.add(primitive);
+            return;
+        }
 
         if (!show || //
            (!defined(vertexPositionsProperty) && //
@@ -199,7 +279,6 @@ define([
             return;
         }
 
-        var uniforms;
         if (!defined(polylineVisualizerIndex)) {
             var unusedIndexes = dynamicPolylineVisualizer._unusedIndexes;
             var length = unusedIndexes.length;
@@ -215,7 +294,7 @@ define([
 
             // CZML_TODO Determine official defaults
             polyline.setWidth(1);
-            var material = polyline.getMaterial();
+            material = polyline.getMaterial();
             if (!defined(material) || (material.type !== Material.PolylineOutlineType)) {
                 material = Material.fromType(dynamicPolylineVisualizer._scene.getContext(), Material.PolylineOutlineType);
                 polyline.setMaterial(material);
@@ -231,7 +310,6 @@ define([
 
         polyline.setShow(true);
 
-        var vertexPositions;
         if (defined(ellipseProperty)) {
             vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
         } else {
@@ -243,7 +321,7 @@ define([
             polyline._visualizerPositions = vertexPositions;
         }
 
-        var property = dynamicPolyline._color;
+        property = dynamicPolyline._color;
         if (defined(property)) {
             uniforms.color = property.getValue(time, uniforms.color);
         }
@@ -260,7 +338,7 @@ define([
 
         property = dynamicPolyline._width;
         if (defined(property)) {
-            var width = property.getValue(time);
+            width = property.getValue(time);
             if (defined(width)) {
                 polyline.setWidth(width);
             }
@@ -278,6 +356,11 @@ define([
                 polyline.setShow(false);
                 thisUnusedIndexes.push(polylineVisualizerIndex);
                 dynamicObject._polylineVisualizerIndex = undefined;
+            }
+            var primitive = this._processedObject[dynamicObject.id];
+            if (defined(primitive)) {
+                this._primitives.remove(primitive);
+                this._processedObject[dynamicObject.id] = undefined;
             }
         }
     };

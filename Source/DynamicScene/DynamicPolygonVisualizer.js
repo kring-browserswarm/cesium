@@ -4,6 +4,11 @@ define([
         '../Core/defined',
         '../Core/DeveloperError',
         '../Core/destroyObject',
+        '../Core/GeometryInstance',
+        '../Core/PolygonGeometry',
+        '../DynamicScene/ConstantProperty',
+        '../Scene/Primitive',
+        '../Scene/MaterialAppearance',
         '../Scene/Polygon',
         '../Scene/Material',
         './MaterialProperty'
@@ -12,6 +17,11 @@ define([
          defined,
          DeveloperError,
          destroyObject,
+         GeometryInstance,
+         PolygonGeometry,
+         ConstantProperty,
+         Primitive,
+         MaterialAppearance,
          Polygon,
          Material,
          MaterialProperty) {
@@ -52,6 +62,7 @@ define([
         this._primitives = scene.getPrimitives();
         this._polygonCollection = [];
         this._dynamicObjectCollection = undefined;
+        this._processedObject = {};
         this.setDynamicObjectCollection(dynamicObjectCollection);
     };
 
@@ -124,7 +135,13 @@ define([
         if (defined(this._dynamicObjectCollection)) {
             var dynamicObjects = this._dynamicObjectCollection.getObjects();
             for (i = dynamicObjects.length - 1; i > -1; i--) {
-                dynamicObjects[i]._polygonVisualizerIndex = undefined;
+                var dynamicObject = dynamicObjects[i];
+                dynamicObject._polygonVisualizerIndex = undefined;
+                var primitive = this._processedObject[dynamicObject.id];
+                if (defined(primitive)) {
+                    this._primitives.remove(primitive);
+                    this._processedObject[dynamicObject.id] = undefined;
+                }
             }
         }
 
@@ -187,6 +204,47 @@ define([
         var polygonVisualizerIndex = dynamicObject._polygonVisualizerIndex;
         var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
         var hasVertexPostions = defined(vertexPositionsProperty);
+        var context = dynamicPolygonVisualizer._scene.getContext();
+        var vertexPositions;
+
+        if (vertexPositionsProperty instanceof ConstantProperty) {
+            if (hasVertexPostions) {
+                vertexPositions = vertexPositionsProperty.getValue(time);
+            } else {
+                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+            }
+
+            var primitive = dynamicPolygonVisualizer._processedObject[dynamicObject.id];
+            if (defined(primitive)) {
+                primitive.show = show.getValue(time);
+                return;
+            }
+
+            if (defined(ellipseProperty)) {
+                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+            } else {
+                vertexPositions = vertexPositionsProperty.getValue(time);
+            }
+
+            var material = MaterialProperty.getValue(time, context, dynamicPolygon._material, material);
+
+            // create a polygon with a material
+            primitive = new Primitive({
+                geometryInstances : new GeometryInstance({
+                    geometry : new PolygonGeometry.fromPositions({
+                        positions : vertexPositions,
+                        vertexFormat : MaterialAppearance.VERTEX_FORMAT
+                    })
+                }),
+                appearance : new MaterialAppearance({
+                    material : material
+                })
+            });
+            dynamicPolygonVisualizer._processedObject[dynamicObject.id] = primitive;
+            dynamicPolygonVisualizer._primitives.add(primitive);
+            return;
+        }
+
         if (!show || //
            (!hasVertexPostions && //
            (!defined(ellipseProperty) || !defined(positionProperty)))) {
@@ -200,7 +258,6 @@ define([
             return;
         }
 
-        var context = dynamicPolygonVisualizer._scene.getContext();
         if (!defined(polygonVisualizerIndex)) {
             var unusedIndexes = dynamicPolygonVisualizer._unusedIndexes;
             var length = unusedIndexes.length;
@@ -225,7 +282,6 @@ define([
 
         polygon.show = true;
 
-        var vertexPositions;
         if (hasVertexPostions) {
             vertexPositions = vertexPositionsProperty.getValue(time);
         } else {
@@ -253,6 +309,11 @@ define([
                 polygon.show = false;
                 thisUnusedIndexes.push(polygonVisualizerIndex);
                 dynamicObject._polygonVisualizerIndex = undefined;
+            }
+            var primitive = this._processedObject[dynamicObject.id];
+            if (defined(primitive)) {
+                this._primitives.remove(primitive);
+                this._processedObject[dynamicObject.id] = undefined;
             }
         }
     };
