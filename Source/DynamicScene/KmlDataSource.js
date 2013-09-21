@@ -177,6 +177,8 @@ define(['../Core/createGuid',
             var nodeName = node.nodeName;
             if (nodeName === 'TimeSpan') {
                 dynamicObject.availability = processTimeSpan(node);
+            } else if (nodeName === 'description') {
+                dynamicObject.balloon = new ConstantProperty('<h2>' + name + '</h2>' + node.textContent);
             } else if (featureTypes.hasOwnProperty(nodeName)) {
                 foundGeometry = true;
                 mergeStyles(nodeName, styleObject, dynamicObject);
