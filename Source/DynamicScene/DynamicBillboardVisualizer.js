@@ -267,10 +267,7 @@ define([
             dynamicBillboardVisualizer._textureAtlasBuilder.addTextureFromUrl(textureValue, textureReady(dynamicObject, dynamicBillboardVisualizer._billboardCollection, textureValue));
         }
 
-        billboard.setShow(billboard._visualizerTextureAvailable);
-        if (!billboard._visualizerTextureAvailable) {
-            return;
-        }
+        billboard.setShow(true);
 
         position = positionProperty.getValue(time, position);
         if (defined(position)) {
