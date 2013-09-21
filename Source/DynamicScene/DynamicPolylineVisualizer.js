@@ -5,11 +5,12 @@ define(['../Core/defaultValue',
         '../Core/destroyObject',
         '../Core/Cartesian3',
         '../Core/Color',
+        '../Core/ColorGeometryInstanceAttribute',
         '../Core/GeometryInstance',
         '../Core/PolylineGeometry',
         '../DynamicScene/ConstantProperty',
         '../Scene/Primitive',
-        '../Scene/PolylineMaterialAppearance',
+        '../Scene/PolylineColorAppearance',
         '../Scene/Material',
         '../Scene/PolylineCollection'
        ], function(
@@ -19,11 +20,12 @@ define(['../Core/defaultValue',
          destroyObject,
          Cartesian3,
          Color,
+         ColorGeometryInstanceAttribute,
          GeometryInstance,
          PolylineGeometry,
          ConstantProperty,
          Primitive,
-         PolylineMaterialAppearance,
+         PolylineColorAppearance,
          Material,
          PolylineCollection) {
     "use strict";
@@ -65,6 +67,8 @@ define(['../Core/defaultValue',
         scene.getPrimitives().add(polylineCollection);
         this._dynamicObjectCollection = undefined;
         this._processedObject = {};
+        this._geometries = [];
+        this.firstTime = true;
         this.setDynamicObjectCollection(dynamicObjectCollection);
     };
 
@@ -105,6 +109,7 @@ define(['../Core/defaultValue',
         }
     };
 
+    var cachedPosition = new Cartesian3();
     /**
      * Updates all of the primitives created by this visualizer to match their
      * DynamicObject counterpart at the given time.
@@ -120,8 +125,154 @@ define(['../Core/defaultValue',
         if (defined(this._dynamicObjectCollection)) {
             var dynamicObjects = this._dynamicObjectCollection.getObjects();
             for ( var i = 0, len = dynamicObjects.length; i < len; i++) {
-                updateObject(this, time, dynamicObjects[i]);
+                var dynamicObject = dynamicObjects[i];
+                var dynamicPolyline = dynamicObject._polyline;
+                if (!defined(dynamicPolyline)) {
+                    continue;
+                }
+
+                var polyline;
+                var showProperty = dynamicPolyline._show;
+                var ellipseProperty = dynamicObject._ellipse;
+                var positionProperty = dynamicObject._position;
+                var vertexPositionsProperty = dynamicObject._vertexPositions;
+                var polylineVisualizerIndex = dynamicObject._polylineVisualizerIndex;
+                var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
+                var property;
+                var width;
+                var material;
+                var vertexPositions;
+                var uniforms;
+
+                if (vertexPositionsProperty instanceof ConstantProperty) {
+                    if (defined(this._processedObject[dynamicObject.id])) {
+                        continue;
+                    }
+
+                    if (defined(ellipseProperty)) {
+                        vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+                    } else {
+                        vertexPositions = vertexPositionsProperty.getValue(time);
+                    }
+
+                    property = dynamicPolyline._width;
+                    if (defined(property)) {
+                        width = property.getValue(time);
+                    }
+
+                    var color;
+                    if (defined(dynamicPolyline._color)) {
+                        color = dynamicPolyline._color.getValue(time);
+                    }
+
+                    // create a polyline with a material
+                    var geometry = new GeometryInstance({
+                        geometry : new PolylineGeometry({
+                            positions : vertexPositions,
+                            width : defaultValue(width, 10),
+                            vertexFormat : PolylineColorAppearance.VERTEX_FORMAT
+                        }),
+                        attributes : {
+                            color : ColorGeometryInstanceAttribute.fromColor(defaultValue(color, Color.YELLOW))
+                        }
+                    });
+                    this._geometries.push(geometry);
+                    this._processedObject[dynamicObject.id] = geometry;
+
+                    continue;
+                }
+
+                if (!show || //
+                   (!defined(vertexPositionsProperty) && //
+                   (!defined(ellipseProperty) || !defined(positionProperty)))) {
+                    //Remove the existing primitive if we have one
+                    if (defined(polylineVisualizerIndex)) {
+                        polyline = this._polylineCollection.get(polylineVisualizerIndex);
+                        polyline.setShow(false);
+                        dynamicObject._polylineVisualizerIndex = undefined;
+                        this._unusedIndexes.push(polylineVisualizerIndex);
+                    }
+                    continue;
+                }
+
+                if (!defined(polylineVisualizerIndex)) {
+                    var unusedIndexes = this._unusedIndexes;
+                    var length = unusedIndexes.length;
+                    if (length > 0) {
+                        polylineVisualizerIndex = unusedIndexes.pop();
+                        polyline = this._polylineCollection.get(polylineVisualizerIndex);
+                    } else {
+                        polylineVisualizerIndex = this._polylineCollection.getLength();
+                        polyline = this._polylineCollection.add();
+                    }
+                    dynamicObject._polylineVisualizerIndex = polylineVisualizerIndex;
+                    polyline.dynamicObject = dynamicObject;
+
+                    // CZML_TODO Determine official defaults
+                    polyline.setWidth(1);
+                    material = polyline.getMaterial();
+                    if (!defined(material) || (material.type !== Material.PolylineOutlineType)) {
+                        material = Material.fromType(this._scene.getContext(), Material.PolylineOutlineType);
+                        polyline.setMaterial(material);
+                    }
+                    uniforms = material.uniforms;
+                    Color.clone(Color.WHITE, uniforms.color);
+                    Color.clone(Color.BLACK, uniforms.outlineColor);
+                    uniforms.outlineWidth = 0;
+                } else {
+                    polyline = this._polylineCollection.get(polylineVisualizerIndex);
+                    uniforms = polyline.getMaterial().uniforms;
+                }
+
+                polyline.setShow(true);
+
+                if (defined(ellipseProperty)) {
+                    vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+                } else {
+                    vertexPositions = vertexPositionsProperty.getValue(time);
+                }
+
+                if (defined(vertexPositions) && polyline._visualizerPositions !== vertexPositions) {
+                    polyline.setPositions(vertexPositions);
+                    polyline._visualizerPositions = vertexPositions;
+                }
+
+                property = dynamicPolyline._color;
+                if (defined(property)) {
+                    uniforms.color = property.getValue(time, uniforms.color);
+                }
+
+                property = dynamicPolyline._outlineColor;
+                if (defined(property)) {
+                    uniforms.outlineColor = property.getValue(time, uniforms.outlineColor);
+                }
+
+                property = dynamicPolyline._outlineWidth;
+                if (defined(property)) {
+                    uniforms.outlineWidth = property.getValue(time);
+                }
+
+                property = dynamicPolyline._width;
+                if (defined(property)) {
+                    width = property.getValue(time);
+                    if (defined(width)) {
+                        polyline.setWidth(width);
+                    }
+                }
+
             }
+        }
+
+        if (this.firstTime && this._geometries.length > 0) {
+            this.firstTime = false;
+            var primitive = new Primitive({
+                geometryInstances : this._geometries,
+                appearance : new PolylineColorAppearance({
+                    translucent : false
+                })
+            });
+            this._primitives.add(primitive);
+            this._ga = primitive;
         }
     };
 
@@ -131,17 +282,21 @@ define(['../Core/defaultValue',
     DynamicPolylineVisualizer.prototype.removeAllPrimitives = function() {
         var i;
         this._polylineCollection.removeAll();
+        this.firstTime = false;
 
         if (defined(this._dynamicObjectCollection)) {
             var dynamicObjects = this._dynamicObjectCollection.getObjects();
             for (i = dynamicObjects.length - 1; i > -1; i--) {
                 var dynamicObject = dynamicObjects[i];
                 dynamicObject._polylineVisualizerIndex = undefined;
-                var primitive = this._processedObject[dynamicObject.id];
-                if (defined(primitive)) {
-                    this._primitives.remove(primitive);
-                    this._processedObject[dynamicObject.id] = undefined;
-                }
+            }
+            var primitive = this._ga;
+            if (defined(primitive)) {
+                this._primitives.remove(primitive);
+                this._processedObject = {};
+                this._geometries = [];
+                this.firstTime = true;
+                this._ga = undefined;
             }
         }
 
@@ -189,162 +344,6 @@ define(['../Core/defaultValue',
         return destroyObject(this);
     };
 
-    var cachedPosition = new Cartesian3();
-    function updateObject(dynamicPolylineVisualizer, time, dynamicObject) {
-        var dynamicPolyline = dynamicObject._polyline;
-        if (!defined(dynamicPolyline)) {
-            return;
-        }
-
-        var polyline;
-        var showProperty = dynamicPolyline._show;
-        var ellipseProperty = dynamicObject._ellipse;
-        var positionProperty = dynamicObject._position;
-        var vertexPositionsProperty = dynamicObject._vertexPositions;
-        var polylineVisualizerIndex = dynamicObject._polylineVisualizerIndex;
-        var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
-        var property;
-        var width;
-        var material;
-        var vertexPositions;
-        var uniforms;
-
-        if (vertexPositionsProperty instanceof ConstantProperty) {
-            var primitive = dynamicPolylineVisualizer._processedObject[dynamicObject.id];
-            if (defined(primitive)) {
-                primitive.show = show.getValue(time);
-                return;
-            }
-
-            if (defined(ellipseProperty)) {
-                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
-            } else {
-                vertexPositions = vertexPositionsProperty.getValue(time);
-            }
-
-            property = dynamicPolyline._width;
-            if (defined(property)) {
-                width = property.getValue(time);
-            }
-
-            material = Material.fromType(dynamicPolylineVisualizer._scene.getContext(), Material.PolylineOutlineType);
-            uniforms = material.uniforms;
-            Color.clone(Color.WHITE, uniforms.color);
-            Color.clone(Color.BLACK, uniforms.outlineColor);
-            uniforms.outlineWidth = 0;
-
-            property = dynamicPolyline._color;
-            if (defined(property)) {
-                uniforms.color = property.getValue(time, uniforms.color);
-            }
-
-            property = dynamicPolyline._outlineColor;
-            if (defined(property)) {
-                uniforms.outlineColor = property.getValue(time, uniforms.outlineColor);
-            }
-
-            property = dynamicPolyline._outlineWidth;
-            if (defined(property)) {
-                uniforms.outlineWidth = property.getValue(time);
-            }
-
-            // create a polyline with a material
-            primitive = new Primitive({
-                geometryInstances : new GeometryInstance({
-                    geometry : new PolylineGeometry({
-                        positions : vertexPositions,
-                        width : defaultValue(width, 10),
-                        vertexFormat : PolylineMaterialAppearance.VERTEX_FORMAT
-                    })
-                }),
-                appearance : new PolylineMaterialAppearance({
-                    material : material
-                })
-            });
-            dynamicPolylineVisualizer._processedObject[dynamicObject.id] = primitive;
-            dynamicPolylineVisualizer._primitives.add(primitive);
-            return;
-        }
-
-        if (!show || //
-           (!defined(vertexPositionsProperty) && //
-           (!defined(ellipseProperty) || !defined(positionProperty)))) {
-            //Remove the existing primitive if we have one
-            if (defined(polylineVisualizerIndex)) {
-                polyline = dynamicPolylineVisualizer._polylineCollection.get(polylineVisualizerIndex);
-                polyline.setShow(false);
-                dynamicObject._polylineVisualizerIndex = undefined;
-                dynamicPolylineVisualizer._unusedIndexes.push(polylineVisualizerIndex);
-            }
-            return;
-        }
-
-        if (!defined(polylineVisualizerIndex)) {
-            var unusedIndexes = dynamicPolylineVisualizer._unusedIndexes;
-            var length = unusedIndexes.length;
-            if (length > 0) {
-                polylineVisualizerIndex = unusedIndexes.pop();
-                polyline = dynamicPolylineVisualizer._polylineCollection.get(polylineVisualizerIndex);
-            } else {
-                polylineVisualizerIndex = dynamicPolylineVisualizer._polylineCollection.getLength();
-                polyline = dynamicPolylineVisualizer._polylineCollection.add();
-            }
-            dynamicObject._polylineVisualizerIndex = polylineVisualizerIndex;
-            polyline.dynamicObject = dynamicObject;
-
-            // CZML_TODO Determine official defaults
-            polyline.setWidth(1);
-            material = polyline.getMaterial();
-            if (!defined(material) || (material.type !== Material.PolylineOutlineType)) {
-                material = Material.fromType(dynamicPolylineVisualizer._scene.getContext(), Material.PolylineOutlineType);
-                polyline.setMaterial(material);
-            }
-            uniforms = material.uniforms;
-            Color.clone(Color.WHITE, uniforms.color);
-            Color.clone(Color.BLACK, uniforms.outlineColor);
-            uniforms.outlineWidth = 0;
-        } else {
-            polyline = dynamicPolylineVisualizer._polylineCollection.get(polylineVisualizerIndex);
-            uniforms = polyline.getMaterial().uniforms;
-        }
-
-        polyline.setShow(true);
-
-        if (defined(ellipseProperty)) {
-            vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
-        } else {
-            vertexPositions = vertexPositionsProperty.getValue(time);
-        }
-
-        if (defined(vertexPositions) && polyline._visualizerPositions !== vertexPositions) {
-            polyline.setPositions(vertexPositions);
-            polyline._visualizerPositions = vertexPositions;
-        }
-
-        property = dynamicPolyline._color;
-        if (defined(property)) {
-            uniforms.color = property.getValue(time, uniforms.color);
-        }
-
-        property = dynamicPolyline._outlineColor;
-        if (defined(property)) {
-            uniforms.outlineColor = property.getValue(time, uniforms.outlineColor);
-        }
-
-        property = dynamicPolyline._outlineWidth;
-        if (defined(property)) {
-            uniforms.outlineWidth = property.getValue(time);
-        }
-
-        property = dynamicPolyline._width;
-        if (defined(property)) {
-            width = property.getValue(time);
-            if (defined(width)) {
-                polyline.setWidth(width);
-            }
-        }
-    }
-
     DynamicPolylineVisualizer.prototype._onObjectsRemoved = function(dynamicObjectCollection, added, dynamicObjects) {
         var thisPolylineCollection = this._polylineCollection;
         var thisUnusedIndexes = this._unusedIndexes;
@@ -357,11 +356,14 @@ define(['../Core/defaultValue',
                 thisUnusedIndexes.push(polylineVisualizerIndex);
                 dynamicObject._polylineVisualizerIndex = undefined;
             }
-            var primitive = this._processedObject[dynamicObject.id];
-            if (defined(primitive)) {
-                this._primitives.remove(primitive);
-                this._processedObject[dynamicObject.id] = undefined;
-            }
+        }
+        var primitive = this._ga;
+        if (defined(primitive)) {
+            this._primitives.remove(primitive);
+            this._processedObject = {};
+            this._geometries = [];
+            this.firstTime = true;
+            this._ga = undefined;
         }
     };
 

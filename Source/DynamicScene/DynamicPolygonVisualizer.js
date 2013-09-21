@@ -1,27 +1,33 @@
 /*global define*/
 define([
         '../Core/Cartesian3',
+        '../Core/Color',
+        '../Core/defaultValue',
         '../Core/defined',
         '../Core/DeveloperError',
         '../Core/destroyObject',
         '../Core/GeometryInstance',
         '../Core/PolygonGeometry',
+        '../Core/ColorGeometryInstanceAttribute',
         '../DynamicScene/ConstantProperty',
         '../Scene/Primitive',
-        '../Scene/MaterialAppearance',
+        '../Scene/PerInstanceColorAppearance',
         '../Scene/Polygon',
         '../Scene/Material',
         './MaterialProperty'
        ], function(
          Cartesian3,
+         Color,
+         defaultValue,
          defined,
          DeveloperError,
          destroyObject,
          GeometryInstance,
          PolygonGeometry,
+         ColorGeometryInstanceAttribute,
          ConstantProperty,
          Primitive,
-         MaterialAppearance,
+         PerInstanceColorAppearance,
          Polygon,
          Material,
          MaterialProperty) {
@@ -63,6 +69,8 @@ define([
         this._polygonCollection = [];
         this._dynamicObjectCollection = undefined;
         this._processedObject = {};
+        this._geometries = [];
+        this.firstTime = true;
         this.setDynamicObjectCollection(dynamicObjectCollection);
     };
 
@@ -103,6 +111,8 @@ define([
         }
     };
 
+    var cachedPosition = new Cartesian3();
+
     /**
      * Updates all of the primitives created by this visualizer to match their
      * DynamicObject counterpart at the given time.
@@ -118,8 +128,126 @@ define([
         if (defined(this._dynamicObjectCollection)) {
             var dynamicObjects = this._dynamicObjectCollection.getObjects();
             for ( var i = 0, len = dynamicObjects.length; i < len; i++) {
-                updateObject(this, time, dynamicObjects[i]);
+                var dynamicObject = dynamicObjects[i];
+                var dynamicPolygon = dynamicObject._polygon;
+                if (!defined(dynamicPolygon)) {
+                    continue;
+                }
+
+                var polygon;
+                var showProperty = dynamicPolygon._show;
+                var ellipseProperty = dynamicObject._ellipse;
+                var positionProperty = dynamicObject._position;
+                var vertexPositionsProperty = dynamicObject._vertexPositions;
+                var polygonVisualizerIndex = dynamicObject._polygonVisualizerIndex;
+                var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
+                var hasVertexPostions = defined(vertexPositionsProperty);
+                var context = this._scene.getContext();
+                var vertexPositions;
+
+                if (vertexPositionsProperty instanceof ConstantProperty) {
+                    if (hasVertexPostions) {
+                        vertexPositions = vertexPositionsProperty.getValue(time);
+                    } else {
+                        vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+                    }
+
+                    if (defined(this._processedObject[dynamicObject.id])) {
+                        continue;
+                    }
+
+                    if (defined(ellipseProperty)) {
+                        vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+                    } else {
+                        vertexPositions = vertexPositionsProperty.getValue(time);
+                    }
+
+                    var material = MaterialProperty.getValue(time, context, dynamicPolygon._material, material);
+                    var color;
+                    if(defined(material.color)){
+                        color = material.color.getValue(time);
+                    }
+
+                    // create a polygon with a material
+                    var geometry = new GeometryInstance({
+                        geometry : new PolygonGeometry.fromPositions({
+                            positions : vertexPositions,
+                            vertexFormat : PerInstanceColorAppearance.VERTEX_FORMAT
+                        }),
+                        attributes : {
+                            color : ColorGeometryInstanceAttribute.fromColor(defaultValue(color, new Color(0.0, 1.0, 1.0, 0.7)))
+                        }
+                    });
+                    this._geometries.push(geometry);
+                    this._processedObject[dynamicObject.id] = geometry;
+                    continue;
+                }
+
+                if (!show || //
+                   (!hasVertexPostions && //
+                   (!defined(ellipseProperty) || !defined(positionProperty)))) {
+                    //Remove the existing primitive if we have one
+                    if (defined(polygonVisualizerIndex)) {
+                        polygon = this._polygonCollection[polygonVisualizerIndex];
+                        polygon.show = false;
+                        dynamicObject._polygonVisualizerIndex = undefined;
+                        this._unusedIndexes.push(polygonVisualizerIndex);
+                    }
+                    continue;
+                }
+
+                if (!defined(polygonVisualizerIndex)) {
+                    var unusedIndexes = this._unusedIndexes;
+                    var length = unusedIndexes.length;
+                    if (length > 0) {
+                        polygonVisualizerIndex = unusedIndexes.pop();
+                        polygon = this._polygonCollection[polygonVisualizerIndex];
+                    } else {
+                        polygonVisualizerIndex = this._polygonCollection.length;
+                        polygon = new Polygon();
+                        polygon.asynchronous = false;
+                        this._polygonCollection.push(polygon);
+                        this._primitives.add(polygon);
+                    }
+                    dynamicObject._polygonVisualizerIndex = polygonVisualizerIndex;
+                    polygon.dynamicObject = dynamicObject;
+
+                    // CZML_TODO Determine official defaults
+                    polygon.material = Material.fromType(context, Material.ColorType);
+                } else {
+                    polygon = this._polygonCollection[polygonVisualizerIndex];
+                }
+
+                polygon.show = true;
+
+                if (hasVertexPostions) {
+                    vertexPositions = vertexPositionsProperty.getValue(time);
+                } else {
+                    vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
+                }
+
+                if (polygon._visualizerPositions !== vertexPositions && //
+                    defined(vertexPositions) && //
+                    vertexPositions.length > 3) {
+                    polygon.setPositions(vertexPositions);
+                    polygon._visualizerPositions = vertexPositions;
+                }
+
+                polygon.material = MaterialProperty.getValue(time, context, dynamicPolygon._material, polygon.material);
             }
+        }
+
+
+        if (this.firstTime && this._geometries.length > 0) {
+            this.firstTime = false;
+            var primitive = new Primitive({
+                geometryInstances : this._geometries,
+                appearance : new PerInstanceColorAppearance({
+                    translucent : true
+                })
+            });
+            this._primitives.add(primitive);
+            this._ga = primitive;
         }
     };
 
@@ -137,11 +265,14 @@ define([
             for (i = dynamicObjects.length - 1; i > -1; i--) {
                 var dynamicObject = dynamicObjects[i];
                 dynamicObject._polygonVisualizerIndex = undefined;
-                var primitive = this._processedObject[dynamicObject.id];
-                if (defined(primitive)) {
-                    this._primitives.remove(primitive);
-                    this._processedObject[dynamicObject.id] = undefined;
-                }
+            }
+            var primitive = this._ga;
+            if (defined(primitive)) {
+                this._primitives.remove(primitive);
+                this._processedObject = {};
+                this._geometries = [];
+                this.firstTime = true;
+                this._ga = undefined;
             }
         }
 
@@ -189,115 +320,6 @@ define([
         return destroyObject(this);
     };
 
-    var cachedPosition = new Cartesian3();
-    function updateObject(dynamicPolygonVisualizer, time, dynamicObject) {
-        var dynamicPolygon = dynamicObject._polygon;
-        if (!defined(dynamicPolygon)) {
-            return;
-        }
-
-        var polygon;
-        var showProperty = dynamicPolygon._show;
-        var ellipseProperty = dynamicObject._ellipse;
-        var positionProperty = dynamicObject._position;
-        var vertexPositionsProperty = dynamicObject._vertexPositions;
-        var polygonVisualizerIndex = dynamicObject._polygonVisualizerIndex;
-        var show = dynamicObject.isAvailable(time) && (!defined(showProperty) || showProperty.getValue(time));
-        var hasVertexPostions = defined(vertexPositionsProperty);
-        var context = dynamicPolygonVisualizer._scene.getContext();
-        var vertexPositions;
-
-        if (vertexPositionsProperty instanceof ConstantProperty) {
-            if (hasVertexPostions) {
-                vertexPositions = vertexPositionsProperty.getValue(time);
-            } else {
-                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
-            }
-
-            var primitive = dynamicPolygonVisualizer._processedObject[dynamicObject.id];
-            if (defined(primitive)) {
-                primitive.show = show.getValue(time);
-                return;
-            }
-
-            if (defined(ellipseProperty)) {
-                vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
-            } else {
-                vertexPositions = vertexPositionsProperty.getValue(time);
-            }
-
-            var material = MaterialProperty.getValue(time, context, dynamicPolygon._material, material);
-
-            // create a polygon with a material
-            primitive = new Primitive({
-                geometryInstances : new GeometryInstance({
-                    geometry : new PolygonGeometry.fromPositions({
-                        positions : vertexPositions,
-                        vertexFormat : MaterialAppearance.VERTEX_FORMAT
-                    })
-                }),
-                appearance : new MaterialAppearance({
-                    material : material
-                })
-            });
-            dynamicPolygonVisualizer._processedObject[dynamicObject.id] = primitive;
-            dynamicPolygonVisualizer._primitives.add(primitive);
-            return;
-        }
-
-        if (!show || //
-           (!hasVertexPostions && //
-           (!defined(ellipseProperty) || !defined(positionProperty)))) {
-            //Remove the existing primitive if we have one
-            if (defined(polygonVisualizerIndex)) {
-                polygon = dynamicPolygonVisualizer._polygonCollection[polygonVisualizerIndex];
-                polygon.show = false;
-                dynamicObject._polygonVisualizerIndex = undefined;
-                dynamicPolygonVisualizer._unusedIndexes.push(polygonVisualizerIndex);
-            }
-            return;
-        }
-
-        if (!defined(polygonVisualizerIndex)) {
-            var unusedIndexes = dynamicPolygonVisualizer._unusedIndexes;
-            var length = unusedIndexes.length;
-            if (length > 0) {
-                polygonVisualizerIndex = unusedIndexes.pop();
-                polygon = dynamicPolygonVisualizer._polygonCollection[polygonVisualizerIndex];
-            } else {
-                polygonVisualizerIndex = dynamicPolygonVisualizer._polygonCollection.length;
-                polygon = new Polygon();
-                polygon.asynchronous = false;
-                dynamicPolygonVisualizer._polygonCollection.push(polygon);
-                dynamicPolygonVisualizer._primitives.add(polygon);
-            }
-            dynamicObject._polygonVisualizerIndex = polygonVisualizerIndex;
-            polygon.dynamicObject = dynamicObject;
-
-            // CZML_TODO Determine official defaults
-            polygon.material = Material.fromType(context, Material.ColorType);
-        } else {
-            polygon = dynamicPolygonVisualizer._polygonCollection[polygonVisualizerIndex];
-        }
-
-        polygon.show = true;
-
-        if (hasVertexPostions) {
-            vertexPositions = vertexPositionsProperty.getValue(time);
-        } else {
-            vertexPositions = ellipseProperty.getValue(time, positionProperty.getValue(time, cachedPosition));
-        }
-
-        if (polygon._visualizerPositions !== vertexPositions && //
-            defined(vertexPositions) && //
-            vertexPositions.length > 3) {
-            polygon.setPositions(vertexPositions);
-            polygon._visualizerPositions = vertexPositions;
-        }
-
-        polygon.material = MaterialProperty.getValue(time, context, dynamicPolygon._material, polygon.material);
-    }
-
     DynamicPolygonVisualizer.prototype._onObjectsRemoved = function(dynamicObjectCollection, added, dynamicObjects) {
         var thisPolygonCollection = this._polygonCollection;
         var thisUnusedIndexes = this._unusedIndexes;
@@ -310,11 +332,15 @@ define([
                 thisUnusedIndexes.push(polygonVisualizerIndex);
                 dynamicObject._polygonVisualizerIndex = undefined;
             }
-            var primitive = this._processedObject[dynamicObject.id];
-            if (defined(primitive)) {
-                this._primitives.remove(primitive);
-                this._processedObject[dynamicObject.id] = undefined;
-            }
+        }
+
+        var primitive = this._ga;
+        if (defined(primitive)) {
+            this._primitives.remove(primitive);
+            this._processedObject = {};
+            this._geometries = [];
+            this.firstTime = true;
+            this._ga = undefined;
         }
     };
 
