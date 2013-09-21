@@ -767,6 +767,7 @@ define([
          * @see czm_view
          * @see czm_projection
          * @see czm_modelViewProjection
+         * @see czm_inverseViewProjection
          *
          * @example
          * // GLSL declaration
@@ -793,6 +794,38 @@ define([
         },
 
         /**
+         * An automatic GLSL uniform representing a 4x4 view-projection transformation matrix that
+         * transforms clip coordinates to world coordinates.  Clip coordinates is the
+         * coordinate system for a vertex shader's <code>gl_Position</code> output.
+         *
+         * @alias czm_inverseViewProjection
+         * @glslUniform
+         *
+         * @see UniformState#getInverseViewProjection
+         * @see czm_viewProjection
+         *
+         * @example
+         * // GLSL declaration
+         * uniform mat4 czm_inverseViewProjection;
+         *
+         * // Example
+         * vec4 worldPosition = czm_inverseViewProjection * clipPosition;
+         */
+        czm_inverseViewProjection : {
+            getSize : function() {
+                return 1;
+            },
+
+            getDatatype : function() {
+                return UniformDatatype.FLOAT_MATRIX4;
+            },
+
+            getValue : function(uniformState) {
+                return uniformState.getInverseViewProjection();
+            }
+        },
+
+        /**
          * An automatic GLSL uniform representing a 4x4 model-view-projection transformation matrix that
          * transforms model coordinates to clip coordinates.  Clip coordinates is the
          * coordinate system for a vertex shader's <code>gl_Position</code> output.
@@ -807,6 +840,7 @@ define([
          * @see czm_modelView
          * @see czm_viewProjection
          * @see czm_modelViewInfiniteProjection
+         * @see czm_inverseModelViewProjection
          *
          * @example
          * // GLSL declaration
@@ -829,6 +863,38 @@ define([
 
             getValue : function(uniformState) {
                 return uniformState.getModelViewProjection();
+            }
+        },
+
+        /**
+         * An automatic GLSL uniform representing a 4x4 inverse model-view-projection transformation matrix that
+         * transforms clip coordinates to model coordinates.  Clip coordinates is the
+         * coordinate system for a vertex shader's <code>gl_Position</code> output.
+         *
+         * @alias czm_inverseModelViewProjection
+         * @glslUniform
+         *
+         * @see UniformState#getModelViewProjection
+         * @see czm_modelViewProjection
+         *
+         * @example
+         * // GLSL declaration
+         * uniform mat4 czm_inverseModelViewProjection;
+         *
+         * // Example
+         * vec4 modelPosition = czm_inverseModelViewProjection * clipPosition;
+         */
+        czm_inverseModelViewProjection : {
+            getSize : function() {
+                return 1;
+            },
+
+            getDatatype : function() {
+                return UniformDatatype.FLOAT_MATRIX4;
+            },
+
+            getValue : function(uniformState) {
+                return uniformState.getInverseModelViewProjection();
             }
         },
 
