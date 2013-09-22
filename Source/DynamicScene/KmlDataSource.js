@@ -563,7 +563,7 @@ define(['../Core/createGuid',
             for ( var i = 0; i < length; i++) {
                 processPlacemark(dataSource, placemarks[i], dynamicObjectCollection, styleCollection, sourceUri, uriResolver);
             }
-            dataSource._changed.raiseEvent(this);
+            dataSource._changed.raiseEvent(dataSource);
         });
     }
 
