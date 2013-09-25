@@ -7,6 +7,7 @@ define([
         '../createCommand',
         './CzmlDataSourcePanel',
         './GeoJsonDataSourcePanel',
+        './KmlDataSourcePanel',
         '../../ThirdParty/knockout',
         '../../ThirdParty/when'
     ], function(
@@ -17,6 +18,7 @@ define([
         createCommand,
         CzmlDataSourcePanel,
         GeoJsonDataSourcePanel,
+        KmlDataSourcePanel,
         knockout,
         when) {
     "use strict";
@@ -162,7 +164,7 @@ define([
      *
      * @type Array
      */
-    DataSourcePanelViewModel.defaultDataSourcePanels = [new CzmlDataSourcePanel(), new GeoJsonDataSourcePanel()];
+    DataSourcePanelViewModel.defaultDataSourcePanels = [new CzmlDataSourcePanel(), new GeoJsonDataSourcePanel(), new KmlDataSourcePanel()];
 
     return DataSourcePanelViewModel;
 });
