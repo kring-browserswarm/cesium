@@ -91,10 +91,24 @@ define([
         }
         eventHelper.add(viewer.clock.onTick, onTick);
 
+        function trackObject(dynamicObject) {
+            if (defined(dynamicObject) && defined(dynamicObject.position)) {
+                viewer.trackedObject = dynamicObject;
+            }
+        }
+
         function pickAndTrackObject(e) {
-            var p = viewer.scene.pick(e.position);
-            if (defined(p) && defined(p.primitive) && defined(p.primitive.dynamicObject) && defined(p.primitive.dynamicObject.position)) {
-                viewer.trackedObject = p.primitive.dynamicObject;
+            var picked = viewer.scene.pick(e.position);
+            if (defined(picked) &&
+                defined(picked.primitive) &&
+                defined(picked.primitive.dynamicObject)) {
+                trackObject(picked.primitive.dynamicObject);
+            }
+        }
+
+        function showBalloon(dynamicObject) {
+            if (defined(dynamicObject) && defined(dynamicObject.position)) {
+                viewer.balloonedObject = dynamicObject;
             }
         }
 
@@ -119,6 +133,10 @@ define([
         //Subscribe to left clicks and zoom to the picked object.
         viewer.screenSpaceEventHandler.setInputAction(pickAndShowBalloon, ScreenSpaceEventType.LEFT_CLICK);
         viewer.screenSpaceEventHandler.setInputAction(pickAndTrackObject, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+        if (defined(viewer.dataSourceBrowser)) {
+            eventHelper.add(viewer.dataSourceBrowser.viewModel.onObjectSelected, showBalloon);
+        }
 
         defineProperties(viewer, {
             /**

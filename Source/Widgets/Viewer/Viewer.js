@@ -18,6 +18,7 @@ define([
         '../BaseLayerPicker/createDefaultBaseLayers',
         '../CesiumWidget/CesiumWidget',
         '../ClockViewModel',
+        '../DataSourceBrowser/DataSourceBrowser',
         '../FullscreenButton/FullscreenButton',
         '../getElement',
         '../HomeButton/HomeButton',
@@ -43,6 +44,7 @@ define([
         createDefaultBaseLayers,
         CesiumWidget,
         ClockViewModel,
+        DataSourceBrowser,
         FullscreenButton,
         getElement,
         HomeButton,
@@ -99,6 +101,7 @@ define([
      * @param {Object} [options] Configuration options for the widget.
      * @param {Boolean} [options.animation=true] If set to false, the Animation widget will not be created.
      * @param {Boolean} [options.baseLayerPicker=true] If set to false, the BaseLayerPicker widget will not be created.
+     * @param {Boolean} [options.dataSourceBrowser=true] If set to false, the DataSourceBrowser widget will not be created.
      * @param {Boolean} [options.fullscreenButton=true] If set to false, the FullscreenButton widget will not be created.
      * @param {Boolean} [options.homeButton=true] If set to false, the HomeButton widget will not be created.
      * @param {Boolean} [options.sceneModePicker=true] If set to false, the SceneModePicker widget will not be created.
@@ -288,6 +291,27 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
 
         var eventHelper = new EventHelper();
 
+        //DataSourceBrowser
+        function trackDataSourceClock(dataSource) {
+            var dataSourceClock = dataSource.getClock();
+            if (defined(dataSourceClock)) {
+                dataSourceClock.getValue(clock);
+                if (defined(timeline)) {
+                    timeline.updateFromClock();
+                    timeline.zoomTo(dataSourceClock.startTime, dataSourceClock.stopTime);
+                }
+            }
+        }
+
+        var dataSourceBrowser;
+        if (!defined(options.dataSourceBrowser) || options.dataSourceBrowser !== false) {
+            var dataSourceBrowserContainer = document.createElement('div');
+            dataSourceBrowserContainer.className = 'cesium-viewer-dataSourceBrowserContainer';
+            viewerContainer.appendChild(dataSourceBrowserContainer);
+            dataSourceBrowser = new DataSourceBrowser(dataSourceBrowserContainer, dataSourceCollection);
+            eventHelper.add(dataSourceBrowser.viewModel.onClockSelected, trackDataSourceClock);
+        }
+
         function updateDataSourceDisplay(clock) {
             dataSourceDisplay.update(clock.currentTime);
         }
@@ -296,13 +320,10 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
 
         function setClockFromDataSource(dataSourceCollection, dataSource) {
             if (dataSourceCollection.getLength() === 1) {
-                var dataSourceClock = dataSource.getClock();
-                if (defined(dataSourceClock)) {
-                    dataSourceClock.getValue(clock);
-                    if (defined(timeline)) {
-                        timeline.updateFromClock();
-                        timeline.zoomTo(dataSourceClock.startTime, dataSourceClock.stopTime);
-                    }
+                if (defined(dataSourceBrowser)) {
+                    dataSourceBrowser.viewModel.clockTrackedDataSource = dataSource;
+                } else {
+                    trackDataSourceClock(dataSource);
                 }
             }
         }
@@ -322,6 +343,7 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
         this._animation = animation;
         this._timeline = timeline;
         this._fullscreenButton = fullscreenButton;
+        this._dataSourceBrowser = dataSourceBrowser;
         this._eventHelper = eventHelper;
         this._lastWidth = 0;
         this._lastHeight = 0;
@@ -420,6 +442,17 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
         fullscreenButton : {
             get : function() {
                 return this._fullscreenButton;
+            }
+        },
+
+        /**
+         * Gets the DataSourceBrowser.
+         * @memberof Viewer
+         * @type {DataSourceBrowser}
+         */
+        dataSourceBrowser : {
+            get : function() {
+                return this._dataSourceBrowser;
             }
         },
 
@@ -598,10 +631,15 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
             return;
         }
 
+        var panelMaxHeight = height - 125;
+
         var baseLayerPickerDropDown = this._baseLayerPickerDropDown;
         if (defined(baseLayerPickerDropDown)) {
-            var baseLayerPickerMaxHeight = height - 125;
-            baseLayerPickerDropDown.style.maxHeight = baseLayerPickerMaxHeight + 'px';
+            baseLayerPickerDropDown.style.maxHeight = panelMaxHeight + 'px';
+        }
+
+        if (defined(this._dataSourceBrowser)) {
+            this._dataSourceBrowser.viewModel.maxHeight = panelMaxHeight;
         }
 
         var timelineExists = defined(this._timeline);
@@ -717,6 +755,11 @@ Either specify options.imageryProvider instead or set options.baseLayerPicker to
             this._fullscreenSubscription.dispose();
             this._element.removeChild(this._fullscreenButton.container);
             this._fullscreenButton = this._fullscreenButton.destroy();
+        }
+
+        if (defined(this._dataSourceBrowser)) {
+            this._element.removeChild(this._dataSourceBrowser.container);
+            this._dataSourceBrowser = this._dataSourceBrowser.destroy();
         }
 
         this._clockViewModel = this._clockViewModel.destroy();

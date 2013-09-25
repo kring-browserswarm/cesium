@@ -1097,6 +1097,23 @@ define([
             clock.currentTime = clock.startTime;
             clock.clockStep = ClockStep.SYSTEM_CLOCK_MULTIPLIER;
         }
+
+        if (!defined(dataSource._name)) {
+            var name;
+            if (defined(documentObject)) {
+                //name = documentObject.name;
+            }
+
+            if (!defined(name) && defined(sourceUri)) {
+                var index = sourceUri.lastIndexOf('/');
+                if (index !== -1) {
+                    name = sourceUri.substr(index + 1);
+                }
+            }
+
+            dataSource._name = name;
+        }
+
         return clock;
     }
 
@@ -1104,8 +1121,12 @@ define([
      * A {@link DataSource} which processes CZML.
      * @alias CzmlDataSource
      * @constructor
+     *
+     * @param {String} [name] The name of this data source.  If undefined, a name will be read from the
+     *                        loaded CZML document, or the name of the CZML file.
      */
-    var CzmlDataSource = function() {
+    var CzmlDataSource = function(name) {
+        this._name = name;
         this._changed = new Event();
         this._error = new Event();
         this._clock = undefined;
@@ -1135,6 +1156,16 @@ define([
     processOrientation, //
     processVertexPositions, //
     processAvailability];
+
+    /**
+     * Gets the name of this data source.
+     * @memberof CzmlDataSource
+     *
+     * @returns {String} The name.
+     */
+    CzmlDataSource.prototype.getName = function() {
+        return this._name;
+    };
 
     /**
      * Gets an event that will be raised when non-time-varying data changes

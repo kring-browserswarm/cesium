@@ -9,6 +9,8 @@ define([
         'Widgets/Viewer/Viewer',
         'Widgets/Viewer/viewerDragDropMixin',
         'Widgets/Viewer/viewerDynamicObjectMixin',
+        'Widgets/DataSourceBrowser/DataSourcePanelViewModel',
+        'Widgets/DataSourceBrowser/ListDataSourcePanel',
         'domReady!'
     ], function(
         defined,
@@ -19,7 +21,9 @@ define([
         checkForChromeFrame,
         Viewer,
         viewerDragDropMixin,
-        viewerDynamicObjectMixin) {
+        viewerDynamicObjectMixin,
+        DataSourcePanelViewModel,
+        ListDataSourcePanel) {
     "use strict";
     /*global console*/
 
@@ -66,6 +70,8 @@ define([
     }
 
     function startup() {
+        DataSourcePanelViewModel.defaultDataSourcePanels.unshift(new ListDataSourcePanel('Local Gallery', 'Gallery/'));
+
         var viewer = new Viewer('cesiumContainer');
         viewer.extend(viewerDragDropMixin);
         viewer.extend(viewerDynamicObjectMixin);
