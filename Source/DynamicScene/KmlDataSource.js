@@ -550,6 +550,11 @@ define(['../Core/createGuid',
     }
 
     function loadKml(dataSource, kml, sourceUri, uriResolver) {
+        var document = kml.getElementsByTagName('Document');
+        if (document.length > 0) {
+            dataSource._name = getStringValue(document[0], 'name');
+        }
+
         var dynamicObjectCollection = dataSource._dynamicObjectCollection;
         var styleCollection = new DynamicObjectCollection();
 
@@ -628,6 +633,7 @@ define(['../Core/createGuid',
         this._clock = undefined;
         this._dynamicObjectCollection = new DynamicObjectCollection();
         this._timeVarying = true;
+        this._name = undefined;
     };
 
     /**
@@ -649,6 +655,10 @@ define(['../Core/createGuid',
      */
     KmlDataSource.prototype.getErrorEvent = function() {
         return this._error;
+    };
+
+    KmlDataSource.prototype.getName = function() {
+        return this._name;
     };
 
     /**
